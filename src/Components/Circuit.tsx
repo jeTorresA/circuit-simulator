@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Stage, Layer, Line } from 'react-konva';
 import { useCircuitStore } from '../hooks/useCircuitStore';
 import { ComponentMap } from './ViewRegistry';
 import { getPinGlobalPosition, handleDragMove, handleDragEnd } from '../utils/circuit-functions';
 import FloatingAlert from './FloatingAlert';
+import { doesWireIntersectComponents, findOrthogonalRoute } from '../utils/wire-routing';
+import { COMPONENTS_CONFIG } from '../config/components';
 
 type Selection =
   | { type: 'component'; id: string }
@@ -13,6 +15,12 @@ type Selection =
 interface WirePoint {
   x: number;
   y: number;
+}
+
+interface PinAnchor {
+  pinPoint: WirePoint;
+  exitPoint: WirePoint;
+  componentId: string;
 }
 
 const snapToGrid = (value: number, gridSize: number) => Math.round(value / gridSize) * gridSize;
@@ -31,6 +39,67 @@ const buildWirePoints = (start: WirePoint, bendPoints: WirePoint[], end: WirePoi
   return points;
 };
 
+const getPinDirection = (pinId: string, components: any[]) => {
+  const [componentId, pinName] = pinId.split(':');
+  const component = components.find((comp) => comp.id === componentId);
+  if (!component) return { x: 1, y: 0 };
+
+  const config = COMPONENTS_CONFIG[component.type];
+  const pinOffset = config?.pins?.[pinName];
+  if (!config || !pinOffset) return { x: 1, y: 0 };
+
+  const width = config.width || 0;
+  const height = config.height || 0;
+  const tolerance = 0.001;
+
+  if (Math.abs(pinOffset.x) <= tolerance) return { x: -1, y: 0 };
+  if (Math.abs(pinOffset.x - width) <= tolerance) return { x: 1, y: 0 };
+  if (Math.abs(pinOffset.y) <= tolerance) return { x: 0, y: -1 };
+  if (Math.abs(pinOffset.y - height) <= tolerance) return { x: 0, y: 1 };
+
+  const distances = [
+    { side: 'left', value: pinOffset.x },
+    { side: 'right', value: Math.abs(width - pinOffset.x) },
+    { side: 'top', value: pinOffset.y },
+    { side: 'bottom', value: Math.abs(height - pinOffset.y) },
+  ];
+
+  distances.sort((a, b) => a.value - b.value);
+  const nearest = distances[0]?.side;
+
+  if (nearest === 'left') return { x: -1, y: 0 };
+  if (nearest === 'right') return { x: 1, y: 0 };
+  if (nearest === 'top') return { x: 0, y: -1 };
+  return { x: 0, y: 1 };
+};
+
+const getPinAnchor = (pinId: string, components: any[], gridSize: number, leadCells = 2): PinAnchor => {
+  const pinPoint = getPinGlobalPosition(pinId, components);
+  const [componentId] = pinId.split(':');
+  const direction = getPinDirection(pinId, components);
+  const leadDistance = gridSize * leadCells;
+  const exitPoint = snapPointToGrid(
+    {
+      x: pinPoint.x + direction.x * leadDistance,
+      y: pinPoint.y + direction.y * leadDistance,
+    },
+    gridSize
+  );
+
+  return { pinPoint, exitPoint, componentId };
+};
+
+const toPointObjects = (flatPoints: number[]): WirePoint[] => {
+  const points: WirePoint[] = [];
+  for (let i = 0; i < flatPoints.length; i += 2) {
+    points.push({ x: flatPoints[i], y: flatPoints[i + 1] });
+  }
+  return points;
+};
+
+const isWireConnectedToComponent = (wire: any, componentId: string) =>
+  wire.from.startsWith(`${componentId}:`) || wire.to.startsWith(`${componentId}:`);
+
 const Circuit = () => {
   const gridSize = 10;
   const stageWidth = window.innerWidth - 200;
@@ -40,7 +109,76 @@ const Circuit = () => {
   const [alertMessage, setAlertMessage] = useState('');
   const [showAlert, setShowAlert] = useState(false);
   const [selected, setSelected] = useState<Selection>(null);
+  const [draggingComponentId, setDraggingComponentId] = useState<string | null>(null);
   const alertTimeoutRef = useRef<number | null>(null);
+  const stableRoutedWirePointsRef = useRef<Map<string, number[]>>(new Map());
+
+  const getRoutedWirePoints = (wire: any) => {
+    const fromAnchor = getPinAnchor(wire.from, components, gridSize);
+    const toAnchor = getPinAnchor(wire.to, components, gridSize);
+    const rawPoints = buildWirePoints(
+      fromAnchor.pinPoint,
+      [fromAnchor.exitPoint, ...(wire.bendPoints || []), toAnchor.exitPoint],
+      toAnchor.pinPoint
+    );
+    const ignored = new Set<string>([fromAnchor.componentId, toAnchor.componentId]);
+
+    const intersects = doesWireIntersectComponents(
+      toPointObjects(rawPoints),
+      components,
+      ignored
+    );
+
+    if (!intersects) return rawPoints;
+
+    const reroutedPoints = findOrthogonalRoute(
+      fromAnchor.exitPoint,
+      toAnchor.exitPoint,
+      components,
+      gridSize,
+      { width: stageWidth, height: stageHeight },
+      ignored
+    );
+
+    if (!reroutedPoints || reroutedPoints.length < 2) return rawPoints;
+
+    const flatPoints: number[] = [fromAnchor.pinPoint.x, fromAnchor.pinPoint.y];
+    reroutedPoints.forEach((point) => {
+      flatPoints.push(point.x, point.y);
+    });
+    flatPoints.push(toAnchor.pinPoint.x, toAnchor.pinPoint.y);
+    return flatPoints;
+  };
+
+  const fullyRoutedWirePointsById = useMemo(() => {
+    const routed = new Map<string, number[]>();
+    wires.forEach((wire) => {
+      routed.set(wire.id, getRoutedWirePoints(wire));
+    });
+    return routed;
+  }, [wires, components, stageWidth, stageHeight, gridSize]);
+
+  const routedWirePointsById = useMemo(() => {
+    if (!draggingComponentId) return fullyRoutedWirePointsById;
+
+    const routed = new Map<string, number[]>();
+    wires.forEach((wire) => {
+      if (isWireConnectedToComponent(wire, draggingComponentId)) {
+        routed.set(wire.id, getRoutedWirePoints(wire));
+        return;
+      }
+
+      const frozenPoints = stableRoutedWirePointsRef.current.get(wire.id);
+      routed.set(wire.id, frozenPoints || fullyRoutedWirePointsById.get(wire.id) || []);
+    });
+
+    return routed;
+  }, [wires, draggingComponentId, fullyRoutedWirePointsById, components, stageWidth, stageHeight, gridSize]);
+
+  useEffect(() => {
+    if (draggingComponentId) return;
+    stableRoutedWirePointsRef.current = new Map(fullyRoutedWirePointsById);
+  }, [fullyRoutedWirePointsById, draggingComponentId]);
 
   const triggerAlert = (message: string) => {
     if (alertTimeoutRef.current) {
@@ -132,6 +270,18 @@ const Circuit = () => {
     }
   };
 
+  const handleComponentDragMove = (e: any, componentId: string) => {
+    if (draggingComponentId !== componentId) {
+      setDraggingComponentId(componentId);
+    }
+    handleDragMove(e, componentId, updateComponentPos);
+  };
+
+  const handleComponentDragEnd = (e: any, componentId: string) => {
+    handleDragEnd(e, componentId, updateComponentPos);
+    setDraggingComponentId(null);
+  };
+
   return (
     <div style={{ flexGrow: 1, backgroundColor: '#ecf0f1', position: 'relative' }}>
       <FloatingAlert message={alertMessage} visible={showAlert} />
@@ -189,13 +339,11 @@ const Circuit = () => {
         </Layer>
         <Layer>
           {wires.map((wire) => {
-            const start = getPinGlobalPosition(wire.from, components);
-            const end = getPinGlobalPosition(wire.to, components);
-            const bendPoints = wire.bendPoints || [];
+            const points = routedWirePointsById.get(wire.id) || [];
             return (
               <Line
                 key={wire.id}
-                points={buildWirePoints(start, bendPoints, end)}
+                points={points}
                 stroke={selected?.type === 'wire' && selected.id === wire.id ? '#f1c40f' : '#2c3e50'}
                 strokeWidth={selected?.type === 'wire' && selected.id === wire.id ? 5 : 3}
                 lineCap="round"
@@ -209,16 +357,21 @@ const Circuit = () => {
           })}
 
           {dragLine && (
-            <Line
-              points={buildWirePoints(
-                getPinGlobalPosition(dragLine.fromPin, components),
-                dragLine.bendPoints,
-                dragLine.mousePos
-              )}
-              stroke="#3498db"
-              strokeWidth={2}
-              dash={[5, 5]}
-            />
+            (() => {
+              const fromAnchor = getPinAnchor(dragLine.fromPin, components, gridSize);
+              return (
+                <Line
+                  points={buildWirePoints(
+                    fromAnchor.pinPoint,
+                    [fromAnchor.exitPoint, ...dragLine.bendPoints],
+                    dragLine.mousePos
+                  )}
+                  stroke="#3498db"
+                  strokeWidth={2}
+                  dash={[5, 5]}
+                />
+              );
+            })()
           )}
 
           {components.map((comp) => {
@@ -232,8 +385,8 @@ const Circuit = () => {
                 x={comp.x}
                 y={comp.y}
                 onPinClick={handlePinClick}
-                onDragMove={(e: any) => handleDragMove(e, comp.id, updateComponentPos)}
-                onDragEnd={(e: any) => handleDragEnd(e, comp.id, updateComponentPos)}
+                onDragMove={(e: any) => handleComponentDragMove(e, comp.id)}
+                onDragEnd={(e: any) => handleComponentDragEnd(e, comp.id)}
                 onSelect={(id: string) => setSelected({ type: 'component', id })}
                 isSelected={selected?.type === 'component' && selected.id === comp.id}
               />
