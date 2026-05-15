@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Stage, Layer, Line, Circle } from 'react-konva';
+import { Stage, Layer, Line, Circle, Group } from 'react-konva';
 import { useCircuitStore } from '../hooks/useCircuitStore';
 import { ComponentMap } from './ViewRegistry';
 import { getPinGlobalPosition, getNodePosition, handleDragMove, handleDragEnd } from '../utils/circuit-functions';
@@ -120,13 +120,38 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
   const stageHeight = window.innerHeight - bottomOffset;
   const { components, wires, junctions, updateComponentPos, updateComponentValue, addWire, removeWire, removeComponent, addJunction } = useCircuitStore();
   const [dragLine, setDragLine] = useState<{ fromNode: string; mousePos: WirePoint; bendPoints: WirePoint[] } | null>(null);
-  const [editingComponentId, setEditingComponentId] = useState<string | null>(null);
   const [alertMessage, setAlertMessage] = useState('');
   const [showAlert, setShowAlert] = useState(false);
   const [selected, setSelected] = useState<Selection>(null);
   const [draggingComponentId, setDraggingComponentId] = useState<string | null>(null);
+  const [editingComponentId, setEditingComponentId] = useState<string | null>(null);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [ctrlHeld, setCtrlHeld] = useState(false);
   const alertTimeoutRef = useRef<number | null>(null);
   const stableRoutedWirePointsRef = useRef<Map<string, number[]>>(new Map());
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Control') setCtrlHeld(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control') {
+        setCtrlHeld(false);
+        if (!isPanningRef.current && containerRef.current) {
+          containerRef.current.style.cursor = 'default';
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, []);
 
   const getRoutedWirePoints = (wire: any) => {
     const fromAnchor = getNodeAnchor(wire.from, components, junctions, gridSize);
@@ -241,6 +266,11 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selected, removeWire, removeComponent]);
 
+  const screenToWorld = (sx: number, sy: number): WirePoint => ({
+    x: sx - panOffset.x,
+    y: sy - panOffset.y,
+  });
+
   const handleNodeClick = (nodeId: string) => {
     if (!dragLine) {
       const pos = nodeId.startsWith('jct:')
@@ -285,7 +315,8 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
     const pointerPos = stage.getPointerPosition();
     if (!pointerPos) return;
 
-    const pos = snapPointToGrid({ x: pointerPos.x, y: pointerPos.y }, gridSize);
+    const worldPos = screenToWorld(pointerPos.x, pointerPos.y);
+    const pos = snapPointToGrid(worldPos, gridSize);
 
     const existing = findJunctionNear(pos.x, pos.y, junctions, gridSize);
     if (existing) {
@@ -298,16 +329,63 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
     setDragLine(null);
   };
 
+  const handleMouseDown = (e: any) => {
+    if (e.evt.ctrlKey && e.target === e.target.getStage()) {
+      isPanningRef.current = true;
+      panStartRef.current = {
+        startX: e.evt.clientX,
+        startY: e.evt.clientY,
+        offsetX: panOffset.x,
+        offsetY: panOffset.y,
+      };
+      setDragLine(null);
+      if (containerRef.current) {
+        containerRef.current.style.cursor = 'grabbing';
+      }
+    }
+  };
+
   const handleMouseMove = (e: any) => {
+    if (isPanningRef.current && panStartRef.current) {
+      const dx = e.evt.clientX - panStartRef.current.startX;
+      const dy = e.evt.clientY - panStartRef.current.startY;
+      setPanOffset({
+        x: panStartRef.current.offsetX + dx,
+        y: panStartRef.current.offsetY + dy,
+      });
+      return;
+    }
+
     if (!dragLine) return;
 
     const stage = e.target.getStage();
     const pointerPos = stage.getPointerPosition();
     if (pointerPos) {
+      const worldPos = screenToWorld(pointerPos.x, pointerPos.y);
       setDragLine({
         ...dragLine,
-        mousePos: snapPointToGrid({ x: pointerPos.x, y: pointerPos.y }, gridSize),
+        mousePos: snapPointToGrid(worldPos, gridSize),
       });
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (isPanningRef.current) {
+      isPanningRef.current = false;
+      panStartRef.current = null;
+      if (containerRef.current) {
+        containerRef.current.style.cursor = ctrlHeld ? 'grab' : 'default';
+      }
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (isPanningRef.current) {
+      isPanningRef.current = false;
+      panStartRef.current = null;
+      if (containerRef.current) {
+        containerRef.current.style.cursor = 'default';
+      }
     }
   };
 
@@ -323,8 +401,23 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
     setDraggingComponentId(null);
   };
 
+  const visibleWorldXStart = Math.floor(-panOffset.x / gridSize) * gridSize;
+  const visibleWorldXEnd = Math.ceil((stageWidth - panOffset.x) / gridSize) * gridSize;
+  const visibleWorldYStart = Math.floor(-panOffset.y / gridSize) * gridSize;
+  const visibleWorldYEnd = Math.ceil((stageHeight - panOffset.y) / gridSize) * gridSize;
+  const numXLines = Math.round((visibleWorldXEnd - visibleWorldXStart) / gridSize) + 1;
+  const numYLines = Math.round((visibleWorldYEnd - visibleWorldYStart) / gridSize) + 1;
+
   return (
-    <div style={{ flexGrow: 1, backgroundColor: '#ecf0f1', position: 'relative' }}>
+    <div
+      ref={containerRef}
+      style={{
+        flexGrow: 1,
+        backgroundColor: '#ecf0f1',
+        position: 'relative',
+        cursor: ctrlHeld && !isPanningRef.current ? 'grab' : undefined,
+      }}
+    >
       <FloatingAlert message={alertMessage} visible={showAlert} />
       {editingComponentId && (() => {
         const comp = components.find(c => c.id === editingComponentId);
@@ -345,14 +438,18 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
       <Stage
         width={stageWidth}
         height={stageHeight}
+        onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
         onClick={(e) => {
           if (e.target === e.target.getStage()) {
             if (e.evt.ctrlKey && dragLine) {
               const stage = e.target.getStage();
               const pointerPos = stage?.getPointerPosition();
               if (pointerPos) {
-                const snappedPoint = snapPointToGrid({ x: pointerPos.x, y: pointerPos.y }, gridSize);
+                const worldPos = screenToWorld(pointerPos.x, pointerPos.y);
+                const snappedPoint = snapPointToGrid(worldPos, gridSize);
                 setDragLine((prev) => {
                   if (!prev) return prev;
                   return {
@@ -371,100 +468,104 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
         }}
       >
         <Layer listening={false}>
-          {Array.from({ length: Math.ceil(stageWidth / gridSize) + 1 }).map((_, index) => {
-            const x = index * gridSize;
-            return (
-              <Line
-                key={`grid-v-${index}`}
-                points={[x, 0, x, stageHeight]}
-                stroke="#d9dee3"
-                strokeWidth={1}
-              />
-            );
-          })}
-          {Array.from({ length: Math.ceil(stageHeight / gridSize) + 1 }).map((_, index) => {
-            const y = index * gridSize;
-            return (
-              <Line
-                key={`grid-h-${index}`}
-                points={[0, y, stageWidth, y]}
-                stroke="#d9dee3"
-                strokeWidth={1}
-              />
-            );
-          })}
-        </Layer>
-        <Layer>
-          {wires.map((wire) => {
-            const points = routedWirePointsById.get(wire.id) || [];
-            return (
-              <Line
-                key={wire.id}
-                points={points}
-                stroke={selected?.type === 'wire' && selected.id === wire.id ? '#f1c40f' : '#2c3e50'}
-                strokeWidth={selected?.type === 'wire' && selected.id === wire.id ? 5 : 3}
-                lineCap="round"
-                hitStrokeWidth={14}
-                onClick={(e) => handleWireClick(e, wire)}
-              />
-            );
-          })}
-
-          {dragLine && (
-            (() => {
-              const fromAnchor = getNodeAnchor(dragLine.fromNode, components, junctions, gridSize);
+          <Group x={panOffset.x} y={panOffset.y} listening={false}>
+            {Array.from({ length: numXLines }).map((_, index) => {
+              const x = visibleWorldXStart + index * gridSize;
               return (
                 <Line
-                  points={buildWirePoints(
-                    fromAnchor.pinPoint,
-                    [fromAnchor.exitPoint, ...dragLine.bendPoints],
-                    dragLine.mousePos
-                  )}
-                  stroke="#3498db"
-                  strokeWidth={2}
-                  dash={[5, 5]}
+                  key={`gv-${index}`}
+                  points={[x, visibleWorldYStart, x, visibleWorldYEnd]}
+                  stroke="#d9dee3"
+                  strokeWidth={1}
                 />
               );
-            })()
-          )}
+            })}
+            {Array.from({ length: numYLines }).map((_, index) => {
+              const y = visibleWorldYStart + index * gridSize;
+              return (
+                <Line
+                  key={`gh-${index}`}
+                  points={[visibleWorldXStart, y, visibleWorldXEnd, y]}
+                  stroke="#d9dee3"
+                  strokeWidth={1}
+                />
+              );
+            })}
+          </Group>
+        </Layer>
+        <Layer>
+          <Group x={panOffset.x} y={panOffset.y}>
+            {wires.map((wire) => {
+              const points = routedWirePointsById.get(wire.id) || [];
+              return (
+                <Line
+                  key={wire.id}
+                  points={points}
+                  stroke={selected?.type === 'wire' && selected.id === wire.id ? '#f1c40f' : '#2c3e50'}
+                  strokeWidth={selected?.type === 'wire' && selected.id === wire.id ? 5 : 3}
+                  lineCap="round"
+                  hitStrokeWidth={14}
+                  onClick={(e) => handleWireClick(e, wire)}
+                />
+              );
+            })}
 
-          {junctions.map((jct) => (
-            <Circle
-              key={jct.id}
-              id={jct.id}
-              x={jct.x}
-              y={jct.y}
-              radius={4}
-              fill="#2c3e50"
-              stroke="#ecf0f1"
-              strokeWidth={1}
-              hitStrokeWidth={10}
-              onClick={(e) => {
-                e.cancelBubble = true;
-                handleNodeClick(jct.id);
-              }}
-            />
-          ))}
+            {dragLine && (
+              (() => {
+                const fromAnchor = getNodeAnchor(dragLine.fromNode, components, junctions, gridSize);
+                return (
+                  <Line
+                    points={buildWirePoints(
+                      fromAnchor.pinPoint,
+                      [fromAnchor.exitPoint, ...dragLine.bendPoints],
+                      dragLine.mousePos
+                    )}
+                    stroke="#3498db"
+                    strokeWidth={2}
+                    dash={[5, 5]}
+                  />
+                );
+              })()
+            )}
 
-          {components.map((comp) => {
-            const ComponentView = ComponentMap[comp.type];
-            if (!ComponentView) return null;
-
-            return (
-              <ComponentView
-                key={comp.id}
-                id={comp.id}
-                x={comp.x}
-                y={comp.y}
-                onPinClick={handleNodeClick}
-                onDragMove={(e: any) => handleComponentDragMove(e, comp.id)}
-                onDragEnd={(e: any) => handleComponentDragEnd(e, comp.id)}
-                onSelect={(id: string) => setSelected({ type: 'component', id })}
-                onDblClick={(id: string) => setEditingComponentId(id)}
-                isSelected={selected?.type === 'component' && selected.id === comp.id}
+            {junctions.map((jct) => (
+              <Circle
+                key={jct.id}
+                id={jct.id}
+                x={jct.x}
+                y={jct.y}
+                radius={4}
+                fill="#2c3e50"
+                stroke="#ecf0f1"
+                strokeWidth={1}
+                hitStrokeWidth={10}
+                onClick={(e) => {
+                  e.cancelBubble = true;
+                  handleNodeClick(jct.id);
+                }}
               />
-            );
-          })}
+            ))}
+
+            {components.map((comp) => {
+              const ComponentView = ComponentMap[comp.type];
+              if (!ComponentView) return null;
+
+              return (
+                <ComponentView
+                  key={comp.id}
+                  id={comp.id}
+                  x={comp.x}
+                  y={comp.y}
+                  onPinClick={handleNodeClick}
+                  onDragMove={(e: any) => handleComponentDragMove(e, comp.id)}
+                  onDragEnd={(e: any) => handleComponentDragEnd(e, comp.id)}
+                  onSelect={(id: string) => setSelected({ type: 'component', id })}
+                  onDblClick={(id: string) => setEditingComponentId(id)}
+                  isSelected={selected?.type === 'component' && selected.id === comp.id}
+                />
+              );
+            })}
+          </Group>
         </Layer>
       </Stage>
     </div>
