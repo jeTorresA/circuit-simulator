@@ -1,6 +1,6 @@
 import { COMPONENTS_CONFIG } from "../config/components";
+import type { JunctionPoint } from "../types";
 
-// Recibe 'components' como segundo argumento
 export const getPinGlobalPosition = (pinId: string, components: any[]) => {
     const [compId, pinName] = pinId.split(':');
     const comp = components.find(c => c.id === compId);
@@ -16,7 +16,14 @@ export const getPinGlobalPosition = (pinId: string, components: any[]) => {
     };
 }
 
-// Recibe 'updateComponentPos' como argumento
+export const getNodePosition = (nodeId: string, components: any[], junctions: JunctionPoint[]) => {
+    if (nodeId.startsWith('jct:')) {
+        const jct = junctions.find(j => j.id === nodeId);
+        return jct ? { x: jct.x, y: jct.y } : { x: 0, y: 0 };
+    }
+    return getPinGlobalPosition(nodeId, components);
+};
+
 export const handleDragMove = (e: any, id: string, updateFn: Function) => {
     const pos = e.target.position();
     updateFn(id, pos.x, pos.y);

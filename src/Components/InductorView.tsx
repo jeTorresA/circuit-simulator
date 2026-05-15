@@ -1,8 +1,8 @@
-import { Group, Text, Rect } from "react-konva";
+import { Group, Text, Rect, Line } from "react-konva";
 import Pin from "./PinView";
 import { COMPONENTS_CONFIG } from "../config/components";
 
-interface ResistorProps {
+interface InductorProps {
     id: string;
     x: number;
     y: number;
@@ -14,8 +14,8 @@ interface ResistorProps {
     isSelected?: boolean;
 }
 
-const Resistor = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDblClick, isSelected }: ResistorProps) => {
-    const config = COMPONENTS_CONFIG['resistor'];
+const Inductor = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDblClick, isSelected }: InductorProps) => {
+    const config = COMPONENTS_CONFIG['inductor'];
 
     return (
         <Group
@@ -40,15 +40,24 @@ const Resistor = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDbl
                 fill={config.fill}
                 stroke={isSelected ? '#f1c40f' : config.stroke}
                 strokeWidth={isSelected ? 3 : 1}
+                cornerRadius={4}
                 shadowColor={isSelected ? '#f1c40f' : undefined}
                 shadowBlur={isSelected ? 10 : 0}
             />
+            <Line
+                points={[8, 15, 13, 5, 18, 15, 23, 5, 28, 15, 33, 5, 38, 15, 43, 5, 48, 15, 52, 10]}
+                stroke={isSelected ? '#f1c40f' : config.stroke}
+                strokeWidth={1.5}
+                lineCap="round"
+                lineJoin="round"
+                tension={0.3}
+            />
             <Text text={config.label} x={config.labelPos.x} y={config.labelPos.y} fontSize={config.labelSize} fill={config.labelFill} />
-        
+
             <Pin id={id + ":left"} x={config.pins.left.x} y={config.pins.left.y} onPinClick={onPinClick} />
             <Pin id={id + ":right"} x={config.pins.right.x} y={config.pins.right.y} onPinClick={onPinClick} />
         </Group>
-    )
+    );
 };
 
-export default Resistor;
+export default Inductor;

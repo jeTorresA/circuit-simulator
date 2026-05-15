@@ -1,8 +1,11 @@
 import ResistorView from './ResistorView';
+import BatteryView from './BatteryView';
+import CapacitorView from './CapacitorView';
+import InductorView from './InductorView';
 
-// Mapeo dinámico: el "tipo" del JSON coincide con el Componente React
 export const ComponentMap: Record<string, React.FC<any>> = {
     resistor: ResistorView,
-    //   battery: BatteryView,
-    // led: LEDView, ...
+    battery: BatteryView,
+    capacitor: CapacitorView,
+    inductor: InductorView,
 };

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Stage, Layer, Line } from 'react-konva';
+import { Stage, Layer, Line, Circle } from 'react-konva';
 import { useCircuitStore } from '../hooks/useCircuitStore';
 import { ComponentMap } from './ViewRegistry';
-import { getPinGlobalPosition, handleDragMove, handleDragEnd } from '../utils/circuit-functions';
+import { getPinGlobalPosition, getNodePosition, handleDragMove, handleDragEnd } from '../utils/circuit-functions';
 import FloatingAlert from './FloatingAlert';
+import ComponentModal from './ComponentModal';
 import { doesWireIntersectComponents, findOrthogonalRoute } from '../utils/wire-routing';
 import { COMPONENTS_CONFIG } from '../config/components';
+import type { JunctionPoint } from '../types';
 
 type Selection =
   | { type: 'component'; id: string }
@@ -73,10 +75,14 @@ const getPinDirection = (pinId: string, components: any[]) => {
   return { x: 0, y: 1 };
 };
 
-const getPinAnchor = (pinId: string, components: any[], gridSize: number, leadCells = 2): PinAnchor => {
-  const pinPoint = getPinGlobalPosition(pinId, components);
-  const [componentId] = pinId.split(':');
-  const direction = getPinDirection(pinId, components);
+const getNodeAnchor = (nodeId: string, components: any[], junctions: JunctionPoint[], gridSize: number, leadCells = 2): PinAnchor => {
+  if (nodeId.startsWith('jct:')) {
+    const pos = getNodePosition(nodeId, components, junctions);
+    return { pinPoint: pos, exitPoint: pos, componentId: '' };
+  }
+  const pinPoint = getPinGlobalPosition(nodeId, components);
+  const [componentId] = nodeId.split(':');
+  const direction = getPinDirection(nodeId, components);
   const leadDistance = gridSize * leadCells;
   const exitPoint = snapPointToGrid(
     {
@@ -100,12 +106,21 @@ const toPointObjects = (flatPoints: number[]): WirePoint[] => {
 const isWireConnectedToComponent = (wire: any, componentId: string) =>
   wire.from.startsWith(`${componentId}:`) || wire.to.startsWith(`${componentId}:`);
 
-const Circuit = () => {
+const findJunctionNear = (x: number, y: number, junctions: JunctionPoint[], tolerance: number): JunctionPoint | undefined => {
+  return junctions.find(j => Math.abs(j.x - x) <= tolerance && Math.abs(j.y - y) <= tolerance);
+};
+
+interface CircuitProps {
+  bottomOffset?: number;
+}
+
+const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
   const gridSize = 10;
   const stageWidth = window.innerWidth - 200;
-  const stageHeight = window.innerHeight;
-  const { components, wires, updateComponentPos, addWire, removeWire, removeComponent } = useCircuitStore();
-  const [dragLine, setDragLine] = useState<{ fromPin: string; mousePos: WirePoint; bendPoints: WirePoint[] } | null>(null);
+  const stageHeight = window.innerHeight - bottomOffset;
+  const { components, wires, junctions, updateComponentPos, updateComponentValue, addWire, removeWire, removeComponent, addJunction } = useCircuitStore();
+  const [dragLine, setDragLine] = useState<{ fromNode: string; mousePos: WirePoint; bendPoints: WirePoint[] } | null>(null);
+  const [editingComponentId, setEditingComponentId] = useState<string | null>(null);
   const [alertMessage, setAlertMessage] = useState('');
   const [showAlert, setShowAlert] = useState(false);
   const [selected, setSelected] = useState<Selection>(null);
@@ -114,14 +129,16 @@ const Circuit = () => {
   const stableRoutedWirePointsRef = useRef<Map<string, number[]>>(new Map());
 
   const getRoutedWirePoints = (wire: any) => {
-    const fromAnchor = getPinAnchor(wire.from, components, gridSize);
-    const toAnchor = getPinAnchor(wire.to, components, gridSize);
+    const fromAnchor = getNodeAnchor(wire.from, components, junctions, gridSize);
+    const toAnchor = getNodeAnchor(wire.to, components, junctions, gridSize);
     const rawPoints = buildWirePoints(
       fromAnchor.pinPoint,
       [fromAnchor.exitPoint, ...(wire.bendPoints || []), toAnchor.exitPoint],
       toAnchor.pinPoint
     );
-    const ignored = new Set<string>([fromAnchor.componentId, toAnchor.componentId]);
+    const ignored = new Set<string>();
+    if (fromAnchor.componentId) ignored.add(fromAnchor.componentId);
+    if (toAnchor.componentId) ignored.add(toAnchor.componentId);
 
     const intersects = doesWireIntersectComponents(
       toPointObjects(rawPoints),
@@ -156,7 +173,7 @@ const Circuit = () => {
       routed.set(wire.id, getRoutedWirePoints(wire));
     });
     return routed;
-  }, [wires, components, stageWidth, stageHeight, gridSize]);
+  }, [wires, components, junctions, stageWidth, stageHeight, gridSize]);
 
   const routedWirePointsById = useMemo(() => {
     if (!draggingComponentId) return fullyRoutedWirePointsById;
@@ -173,7 +190,7 @@ const Circuit = () => {
     });
 
     return routed;
-  }, [wires, draggingComponentId, fullyRoutedWirePointsById, components, stageWidth, stageHeight, gridSize]);
+  }, [wires, draggingComponentId, fullyRoutedWirePointsById, components, junctions, stageWidth, stageHeight, gridSize]);
 
   useEffect(() => {
     if (draggingComponentId) return;
@@ -224,36 +241,60 @@ const Circuit = () => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selected, removeWire, removeComponent]);
 
-  const handlePinClick = (pinId: string) => {
+  const handleNodeClick = (nodeId: string) => {
     if (!dragLine) {
-      setDragLine({
-        fromPin: pinId,
-        mousePos: getPinGlobalPosition(pinId, components),
-        bendPoints: [],
-      });
+      const pos = nodeId.startsWith('jct:')
+        ? getNodePosition(nodeId, components, junctions)
+        : getPinGlobalPosition(nodeId, components);
+      setDragLine({ fromNode: nodeId, mousePos: pos, bendPoints: [] });
       setSelected(null);
       return;
     }
 
-    if (dragLine.fromPin === pinId) {
-      triggerAlert('No puedes conectar un pin consigo mismo.');
+    if (dragLine.fromNode === nodeId) {
+      triggerAlert('No puedes conectar un punto consigo mismo.');
       setDragLine(null);
       return;
     }
 
     const existingWire = wires.find(
       (wire) =>
-        (wire.from === dragLine.fromPin && wire.to === pinId) ||
-        (wire.from === pinId && wire.to === dragLine.fromPin)
+        (wire.from === dragLine.fromNode && wire.to === nodeId) ||
+        (wire.from === nodeId && wire.to === dragLine.fromNode)
     );
 
     if (existingWire) {
-      triggerAlert('Ese cable ya existe.');
+      triggerAlert('Esa conexión ya existe.');
       setDragLine(null);
       return;
     }
 
-    addWire(dragLine.fromPin, pinId, dragLine.bendPoints);
+    addWire(dragLine.fromNode, nodeId, dragLine.bendPoints);
+    setDragLine(null);
+  };
+
+  const handleWireClick = (e: any, wire: any) => {
+    e.cancelBubble = true;
+
+    if (!dragLine) {
+      setSelected({ type: 'wire', id: wire.id });
+      return;
+    }
+
+    const stage = e.target.getStage();
+    const pointerPos = stage.getPointerPosition();
+    if (!pointerPos) return;
+
+    const pos = snapPointToGrid({ x: pointerPos.x, y: pointerPos.y }, gridSize);
+
+    const existing = findJunctionNear(pos.x, pos.y, junctions, gridSize);
+    if (existing) {
+      handleNodeClick(existing.id);
+      return;
+    }
+
+    const jctId = addJunction(pos.x, pos.y);
+    addWire(dragLine.fromNode, jctId, dragLine.bendPoints);
     setDragLine(null);
   };
 
@@ -285,6 +326,22 @@ const Circuit = () => {
   return (
     <div style={{ flexGrow: 1, backgroundColor: '#ecf0f1', position: 'relative' }}>
       <FloatingAlert message={alertMessage} visible={showAlert} />
+      {editingComponentId && (() => {
+        const comp = components.find(c => c.id === editingComponentId);
+        if (!comp) return null;
+        return (
+          <ComponentModal
+            componentId={comp.id}
+            componentType={comp.type}
+            currentValue={comp.value}
+            onSave={(id, value) => {
+              updateComponentValue(id, value);
+              setEditingComponentId(null);
+            }}
+            onClose={() => setEditingComponentId(null)}
+          />
+        );
+      })()}
       <Stage
         width={stageWidth}
         height={stageHeight}
@@ -348,17 +405,14 @@ const Circuit = () => {
                 strokeWidth={selected?.type === 'wire' && selected.id === wire.id ? 5 : 3}
                 lineCap="round"
                 hitStrokeWidth={14}
-                onClick={(e) => {
-                  e.cancelBubble = true;
-                  setSelected({ type: 'wire', id: wire.id });
-                }}
+                onClick={(e) => handleWireClick(e, wire)}
               />
             );
           })}
 
           {dragLine && (
             (() => {
-              const fromAnchor = getPinAnchor(dragLine.fromPin, components, gridSize);
+              const fromAnchor = getNodeAnchor(dragLine.fromNode, components, junctions, gridSize);
               return (
                 <Line
                   points={buildWirePoints(
@@ -374,6 +428,24 @@ const Circuit = () => {
             })()
           )}
 
+          {junctions.map((jct) => (
+            <Circle
+              key={jct.id}
+              id={jct.id}
+              x={jct.x}
+              y={jct.y}
+              radius={4}
+              fill="#2c3e50"
+              stroke="#ecf0f1"
+              strokeWidth={1}
+              hitStrokeWidth={10}
+              onClick={(e) => {
+                e.cancelBubble = true;
+                handleNodeClick(jct.id);
+              }}
+            />
+          ))}
+
           {components.map((comp) => {
             const ComponentView = ComponentMap[comp.type];
             if (!ComponentView) return null;
@@ -384,10 +456,11 @@ const Circuit = () => {
                 id={comp.id}
                 x={comp.x}
                 y={comp.y}
-                onPinClick={handlePinClick}
+                onPinClick={handleNodeClick}
                 onDragMove={(e: any) => handleComponentDragMove(e, comp.id)}
                 onDragEnd={(e: any) => handleComponentDragEnd(e, comp.id)}
                 onSelect={(id: string) => setSelected({ type: 'component', id })}
+                onDblClick={(id: string) => setEditingComponentId(id)}
                 isSelected={selected?.type === 'component' && selected.id === comp.id}
               />
             );

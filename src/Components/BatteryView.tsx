@@ -1,4 +1,4 @@
-import { Group, Text, Rect } from "react-konva";
+import { Group, Text, Circle } from "react-konva";
 import Pin from "./PinView";
 import { COMPONENTS_CONFIG } from "../config/components";
 
@@ -12,10 +12,10 @@ interface ResistorProps {
     onSelect?: (id: string) => void;
     onDblClick?: (id: string) => void;
     isSelected?: boolean;
-}
+} 
 
-const Resistor = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDblClick, isSelected }: ResistorProps) => {
-    const config = COMPONENTS_CONFIG['resistor'];
+const Battery = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDblClick, isSelected }: ResistorProps) => {
+    const config = COMPONENTS_CONFIG['battery'];
 
     return (
         <Group
@@ -34,9 +34,10 @@ const Resistor = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDbl
                 onDblClick?.(id);
             }}
         >
-            <Rect
-                width={config.width}
-                height={config.height}
+            <Circle
+                radius={config.radius}
+                x={config.radius}
+                y={config.radius}
                 fill={config.fill}
                 stroke={isSelected ? '#f1c40f' : config.stroke}
                 strokeWidth={isSelected ? 3 : 1}
@@ -45,10 +46,10 @@ const Resistor = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDbl
             />
             <Text text={config.label} x={config.labelPos.x} y={config.labelPos.y} fontSize={config.labelSize} fill={config.labelFill} />
         
-            <Pin id={id + ":left"} x={config.pins.left.x} y={config.pins.left.y} onPinClick={onPinClick} />
-            <Pin id={id + ":right"} x={config.pins.right.x} y={config.pins.right.y} onPinClick={onPinClick} />
+            <Pin id={id + ":pos"} x={config.pins.pos.x} y={config.pins.pos.y} onPinClick={onPinClick} />
+            <Pin id={id + ":neg"} x={config.pins.neg.x} y={config.pins.neg.y} onPinClick={onPinClick} />
         </Group>
     )
 };
 
-export default Resistor;
+export default Battery;

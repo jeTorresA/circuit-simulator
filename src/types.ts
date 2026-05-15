@@ -1,4 +1,4 @@
-export type ComponentType = 'resistor';
+export type ComponentType = 'resistor' | 'capacitor' | 'inductor' | 'battery';
 
 export interface Point {
     x: number;
@@ -10,13 +10,13 @@ export interface Component {
     type: ComponentType;
     x: number;
     y: number;
-    points: Point[];
+    value: number;
 }
 
 export interface Pin {
     id: string;
     pinName: string;
-    relX: number; // Relative position to the component
+    relX: number;
     relY: number;
 }
 
@@ -24,4 +24,10 @@ export interface Wire {
     id: string;
     fromPinId: string;
     toPinId: string;
+}
+
+export interface JunctionPoint {
+    id: string;
+    x: number;
+    y: number;
 }
