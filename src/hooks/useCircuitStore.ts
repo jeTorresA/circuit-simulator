@@ -112,6 +112,15 @@ export const useCircuitStore = () => {
     });
   };
 
+  const updateWireBendPoints = (wireId: string, bendPoints: WirePoint[]) => {
+    setStore((prev) => ({
+      ...prev,
+      wires: prev.wires.map((wire: any) =>
+        wire.id === wireId ? { ...wire, bendPoints } : wire
+      ),
+    }));
+  };
+
   const removeComponent = (componentId: string) => {
     setStore((prev) => {
       const remainingWires = prev.wires.filter(
@@ -169,6 +178,13 @@ export const useCircuitStore = () => {
     }));
   };
 
+  const updateJunctionPos = (id: string, x: number, y: number) => {
+    setStore((prev) => ({
+      ...prev,
+      junctions: prev.junctions.map((j) => (j.id === id ? { ...j, x, y } : j)),
+    }));
+  };
+
   const clearCircuit = () => {
     store = { components: [], wires: [], junctions: [] };
     localStorage.removeItem(STORAGE_KEY);
@@ -185,8 +201,10 @@ export const useCircuitStore = () => {
     rotateComponent,
     addWire,
     removeWire,
+    updateWireBendPoints,
     removeComponent,
     addJunction,
+    updateJunctionPos,
     removeJunction,
     clearCircuit,
   };

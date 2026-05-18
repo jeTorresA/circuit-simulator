@@ -4,6 +4,7 @@ import { useCircuitStore } from "../hooks/useCircuitStore";
 interface ToolbarProps {
   width: number;
   onToggle: () => void;
+  onOpenDocs: () => void;
 }
 
 const COMPONENT_DEFS = [
@@ -56,7 +57,7 @@ const COMPONENT_DEFS = [
   },
 ];
 
-const Toolbar = ({ width, onToggle }: ToolbarProps) => {
+const Toolbar = ({ width, onToggle, onOpenDocs }: ToolbarProps) => {
   const { components, wires, addComponent } = useCircuitStore();
   const [filter, setFilter] = useState("");
 
@@ -81,6 +82,22 @@ const Toolbar = ({ width, onToggle }: ToolbarProps) => {
     >
       <div style={{ display: "flex", alignItems: "center", marginBottom: "6px" }}>
         <h3 style={{ margin: 0, fontSize: "16px", flex: 1 }}>Componentes</h3>
+        <button
+          onClick={onOpenDocs}
+          style={{
+            cursor: "pointer",
+            fontSize: "12px",
+            color: "#ecf0f1",
+            backgroundColor: "#34495e",
+            border: "1px solid #4f6881",
+            borderRadius: "4px",
+            padding: "4px 7px",
+            marginRight: "6px",
+          }}
+          title="Ver documentacion de componentes"
+        >
+          Docs
+        </button>
         <span
           onClick={onToggle}
           style={{

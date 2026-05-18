@@ -25,6 +25,16 @@ interface PinAnchor {
   componentId: string;
 }
 
+interface WireDragState {
+  wireId: string;
+  mode: 'segment' | 'corner';
+  segmentIndex?: number;
+  cornerIndex?: number;
+  orientation?: 'horizontal' | 'vertical' | 'free';
+  startMouse: WirePoint;
+  initialBendPoints: WirePoint[];
+}
+
 const snapToGrid = (value: number, gridSize: number) => Math.round(value / gridSize) * gridSize;
 
 const snapPointToGrid = (point: WirePoint, gridSize: number): WirePoint => ({
@@ -118,7 +128,7 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
   const gridSize = 10;
   const stageWidth = window.innerWidth - 200;
   const stageHeight = window.innerHeight - bottomOffset;
-  const { components, wires, junctions, updateComponentPos, updateComponentValue, addWire, removeWire, removeComponent, addJunction, rotateComponent } = useCircuitStore();
+  const { components, wires, junctions, updateComponentPos, updateComponentValue, addWire, removeWire, updateWireBendPoints, removeComponent, addJunction, updateJunctionPos, rotateComponent } = useCircuitStore();
   const [dragLine, setDragLine] = useState<{ fromNode: string; mousePos: WirePoint; bendPoints: WirePoint[] } | null>(null);
   const [alertMessage, setAlertMessage] = useState('');
   const [showAlert, setShowAlert] = useState(false);
@@ -133,6 +143,8 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
   const panStartRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
   const spaceHeldRef = useRef(false);
   const [spaceHeld, setSpaceHeld] = useState(false);
+  const [wireDragState, setWireDragState] = useState<WireDragState | null>(null);
+  const [hoveredWireId, setHoveredWireId] = useState<string | null>(null);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -287,6 +299,144 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
     y: sy - panOffset.y,
   });
 
+  const getWireAnchors = (wire: any) => {
+    const fromAnchor = getNodeAnchor(wire.from, components, junctions, gridSize);
+    const toAnchor = getNodeAnchor(wire.to, components, junctions, gridSize);
+    return { fromAnchor, toAnchor };
+  };
+
+  const getEditablePathPoints = (wire: any): WirePoint[] => {
+    const { fromAnchor, toAnchor } = getWireAnchors(wire);
+    return [fromAnchor.exitPoint, ...(wire.bendPoints || []), toAnchor.exitPoint];
+  };
+
+  const getMovableCornerIndices = (wire: any): number[] => {
+    const points = getEditablePathPoints(wire);
+    const indices: number[] = [];
+    for (let i = 1; i < points.length - 1; i += 1) {
+      const prev = points[i - 1];
+      const current = points[i];
+      const next = points[i + 1];
+      const isCorner = (prev.x === current.x && current.y === next.y) || (prev.y === current.y && current.x === next.x);
+      if (isCorner) indices.push(i);
+    }
+    return indices;
+  };
+
+  const beginWireSegmentDrag = (e: any, wire: any, segmentIndex: number, orientation: 'horizontal' | 'vertical' | 'free') => {
+    e.cancelBubble = true;
+    const stage = e.target.getStage();
+    const pointerPos = stage?.getPointerPosition();
+    if (!pointerPos) return;
+    const worldPos = screenToWorld(pointerPos.x, pointerPos.y);
+
+    setSelected({ type: 'wire', id: wire.id });
+    setWireDragState({
+      wireId: wire.id,
+      mode: 'segment',
+      segmentIndex,
+      orientation,
+      startMouse: worldPos,
+      initialBendPoints: [...(wire.bendPoints || [])],
+    });
+    if (containerRef.current) {
+      containerRef.current.style.cursor = orientation === 'horizontal'
+        ? 'row-resize'
+        : orientation === 'vertical'
+          ? 'col-resize'
+          : 'move';
+    }
+  };
+
+  const beginWireCornerDrag = (e: any, wire: any, cornerIndex: number) => {
+    e.cancelBubble = true;
+    const stage = e.target.getStage();
+    const pointerPos = stage?.getPointerPosition();
+    if (!pointerPos) return;
+    const worldPos = screenToWorld(pointerPos.x, pointerPos.y);
+
+    setSelected({ type: 'wire', id: wire.id });
+    setWireDragState({
+      wireId: wire.id,
+      mode: 'corner',
+      cornerIndex,
+      startMouse: worldPos,
+      initialBendPoints: [...(wire.bendPoints || [])],
+    });
+    if (containerRef.current) containerRef.current.style.cursor = 'move';
+  };
+
+  const moveWireSegment = (wire: any, state: WireDragState, mousePos: WirePoint) => {
+    if (state.segmentIndex === undefined || !state.orientation) return;
+    const bendPoints = [...state.initialBendPoints];
+    const dx = snapToGrid(mousePos.x - state.startMouse.x, gridSize);
+    const dy = snapToGrid(mousePos.y - state.startMouse.y, gridSize);
+
+    const pathPoints = getEditablePathPoints(wire);
+    const leftIndex = state.segmentIndex;
+    const rightIndex = state.segmentIndex + 1;
+    const leftIsBend = leftIndex > 0 && leftIndex < pathPoints.length - 1;
+    const rightIsBend = rightIndex > 0 && rightIndex < pathPoints.length - 1;
+
+    if (leftIsBend) {
+      const bendIndex = leftIndex - 1;
+      bendPoints[bendIndex] = {
+        ...bendPoints[bendIndex],
+        ...(state.orientation === 'horizontal'
+          ? { y: bendPoints[bendIndex].y + dy }
+          : state.orientation === 'vertical'
+            ? { x: bendPoints[bendIndex].x + dx }
+            : { x: bendPoints[bendIndex].x + dx, y: bendPoints[bendIndex].y + dy }),
+      };
+    } else if (leftIndex === 0 && typeof wire.from === 'string' && wire.from.startsWith('jct:')) {
+      const jct = junctions.find((j) => j.id === wire.from);
+      if (jct) {
+        updateJunctionPos(
+          jct.id,
+          state.orientation === 'horizontal' ? jct.x : state.orientation === 'vertical' ? jct.x + dx : jct.x + dx,
+          state.orientation === 'horizontal' ? jct.y + dy : state.orientation === 'vertical' ? jct.y : jct.y + dy
+        );
+      }
+    }
+    if (rightIsBend) {
+      const bendIndex = rightIndex - 1;
+      bendPoints[bendIndex] = {
+        ...bendPoints[bendIndex],
+        ...(state.orientation === 'horizontal'
+          ? { y: bendPoints[bendIndex].y + dy }
+          : state.orientation === 'vertical'
+            ? { x: bendPoints[bendIndex].x + dx }
+            : { x: bendPoints[bendIndex].x + dx, y: bendPoints[bendIndex].y + dy }),
+      };
+    } else if (rightIndex === pathPoints.length - 1 && typeof wire.to === 'string' && wire.to.startsWith('jct:')) {
+      const jct = junctions.find((j) => j.id === wire.to);
+      if (jct) {
+        updateJunctionPos(
+          jct.id,
+          state.orientation === 'horizontal' ? jct.x : state.orientation === 'vertical' ? jct.x + dx : jct.x + dx,
+          state.orientation === 'horizontal' ? jct.y + dy : state.orientation === 'vertical' ? jct.y : jct.y + dy
+        );
+      }
+    }
+
+    updateWireBendPoints(wire.id, bendPoints);
+  };
+
+  const moveWireCorner = (wire: any, state: WireDragState, mousePos: WirePoint) => {
+    if (state.cornerIndex === undefined) return;
+    const bendPoints = [...state.initialBendPoints];
+    const pointIndex = state.cornerIndex;
+    if (pointIndex <= 0 || pointIndex >= bendPoints.length + 1) return;
+    const bendIndex = pointIndex - 1;
+    const dx = snapToGrid(mousePos.x - state.startMouse.x, gridSize);
+    const dy = snapToGrid(mousePos.y - state.startMouse.y, gridSize);
+    bendPoints[bendIndex] = {
+      x: bendPoints[bendIndex].x + dx,
+      y: bendPoints[bendIndex].y + dy,
+    };
+    updateWireBendPoints(wire.id, bendPoints);
+  };
+
   const handleNodeClick = (nodeId: string) => {
     if (!dragLine) {
       const pos = nodeId.startsWith('jct:')
@@ -372,12 +522,24 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
       return;
     }
 
-    if (!dragLine) return;
-
     const stage = e.target.getStage();
     const pointerPos = stage.getPointerPosition();
+    if (!pointerPos) return;
+    const worldPos = screenToWorld(pointerPos.x, pointerPos.y);
+
+    if (wireDragState) {
+      const wire = wires.find((w: any) => w.id === wireDragState.wireId);
+      if (!wire) return;
+      if (wireDragState.mode === 'segment') {
+        moveWireSegment(wire, wireDragState, worldPos);
+      } else {
+        moveWireCorner(wire, wireDragState, worldPos);
+      }
+      return;
+    }
+
+    if (!dragLine) return;
     if (pointerPos) {
-      const worldPos = screenToWorld(pointerPos.x, pointerPos.y);
       setDragLine({
         ...dragLine,
         mousePos: snapPointToGrid(worldPos, gridSize),
@@ -386,6 +548,11 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
   };
 
   const handleMouseUp = () => {
+    if (wireDragState) {
+      setWireDragState(null);
+      if (containerRef.current) containerRef.current.style.cursor = spaceHeldRef.current ? 'grab' : 'default';
+      return;
+    }
     if (isPanningRef.current) {
       isPanningRef.current = false;
       panStartRef.current = null;
@@ -513,16 +680,89 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
           <Group x={panOffset.x} y={panOffset.y}>
             {wires.map((wire) => {
               const points = routedWirePointsById.get(wire.id) || [];
+              const editablePoints = getEditablePathPoints(wire);
+              const movableCorners = getMovableCornerIndices(wire);
               return (
-                <Line
-                  key={wire.id}
-                  points={points}
-                  stroke={selected?.type === 'wire' && selected.id === wire.id ? '#f1c40f' : '#2c3e50'}
-                  strokeWidth={selected?.type === 'wire' && selected.id === wire.id ? 5 : 3}
-                  lineCap="round"
-                  hitStrokeWidth={14}
-                  onClick={(e) => handleWireClick(e, wire)}
-                />
+                <Group key={wire.id}>
+                  <Line
+                    points={points}
+                    stroke={selected?.type === 'wire' && selected.id === wire.id ? '#f1c40f' : '#2c3e50'}
+                    strokeWidth={selected?.type === 'wire' && selected.id === wire.id ? 5 : 3}
+                    lineCap="round"
+                    hitStrokeWidth={14}
+                    onClick={(e) => handleWireClick(e, wire)}
+                    onMouseEnter={() => {
+                      setHoveredWireId(wire.id);
+                      if (!wireDragState && !spaceHeldRef.current && containerRef.current) {
+                        containerRef.current.style.cursor = 'pointer';
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      setHoveredWireId((prev) => (prev === wire.id ? null : prev));
+                      if (!wireDragState && !spaceHeldRef.current && containerRef.current) {
+                        containerRef.current.style.cursor = 'default';
+                      }
+                    }}
+                  />
+
+                  {selected?.type === 'wire' && selected.id === wire.id && editablePoints.length > 2 && (
+                    <>
+                      {editablePoints.slice(0, -1).map((point, idx) => {
+                        const next = editablePoints[idx + 1];
+                        const horizontal = point.y === next.y;
+                        const vertical = point.x === next.x;
+                        const orientation = horizontal ? 'horizontal' : vertical ? 'vertical' : 'free';
+                        return (
+                          <Line
+                            key={`${wire.id}-seg-handle-${idx}`}
+                            points={[point.x, point.y, next.x, next.y]}
+                            stroke={hoveredWireId === wire.id ? '#5dade2' : 'rgba(0,0,0,0)'}
+                            strokeWidth={hoveredWireId === wire.id ? 8 : 2}
+                            opacity={hoveredWireId === wire.id ? 0.35 : 0}
+                            hitStrokeWidth={16}
+                            onMouseDown={(e) => beginWireSegmentDrag(e, wire, idx, orientation)}
+                            onMouseEnter={() => {
+                              if (containerRef.current) {
+                                containerRef.current.style.cursor = orientation === 'horizontal'
+                                  ? 'row-resize'
+                                  : orientation === 'vertical'
+                                    ? 'col-resize'
+                                    : 'move';
+                              }
+                            }}
+                            onMouseLeave={() => {
+                              if (!wireDragState && containerRef.current) containerRef.current.style.cursor = 'default';
+                            }}
+                          />
+                        );
+                      })}
+
+                      {movableCorners.map((cornerIndex) => {
+                        const corner = editablePoints[cornerIndex];
+                        return (
+                          <Circle
+                            key={`${wire.id}-corner-${cornerIndex}`}
+                            x={corner.x}
+                            y={corner.y}
+                            radius={hoveredWireId === wire.id ? 5 : 4}
+                            fill="#ffffff"
+                            stroke="#1f618d"
+                            strokeWidth={2}
+                            opacity={hoveredWireId === wire.id ? 0.95 : 0.7}
+                            hitStrokeWidth={14}
+                            onMouseDown={(e) => beginWireCornerDrag(e, wire, cornerIndex)}
+                            onMouseEnter={() => {
+                              if (containerRef.current) containerRef.current.style.cursor = 'move';
+                            }}
+                            onMouseLeave={() => {
+                              if (!wireDragState && containerRef.current) containerRef.current.style.cursor = 'default';
+                            }}
+                          />
+                        );
+                      })}
+                    </>
+                  )}
+                </Group>
               );
             })}
 

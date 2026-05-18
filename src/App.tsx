@@ -4,6 +4,7 @@ import { solveDC } from './core/Solver';
 import Toolbar from './Components/Toolbar';
 import Circuit from './Components/Circuit';
 import SimulationPanel from './Components/SimulationPanel';
+import ComponentDocsModal from './Components/ComponentDocsModal';
 import type { SimulationResult } from './core/Solver';
 
 const PANEL_HEIGHT = 160;
@@ -18,6 +19,7 @@ const App = () => {
   const [showSimPanel, setShowSimPanel] = useState(true);
   const [showToolbar, setShowToolbar] = useState(true);
   const [toolbarWidth, setToolbarWidth] = useState(260);
+  const [showDocs, setShowDocs] = useState(false);
   const isResizing = useRef(false);
 
   useEffect(() => {
@@ -74,7 +76,7 @@ const App = () => {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {showToolbar ? (
           <>
-            <Toolbar width={toolbarWidth} onToggle={() => setShowToolbar(false)} />
+            <Toolbar width={toolbarWidth} onToggle={() => setShowToolbar(false)} onOpenDocs={() => setShowDocs(true)} />
             <div
               onMouseDown={handleResizeStart}
               style={{
@@ -113,6 +115,7 @@ const App = () => {
         onToggle={() => setShowSimPanel(p => !p)}
         onSimulate={handleSimulate}
       />
+      {showDocs && <ComponentDocsModal onClose={() => setShowDocs(false)} />}
     </div>
   );
 };
