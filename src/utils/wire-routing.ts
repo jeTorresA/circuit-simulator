@@ -10,6 +10,7 @@ interface ComponentLike {
   type: string;
   x: number;
   y: number;
+  rotation?: number;
 }
 
 interface Bounds {
@@ -80,11 +81,16 @@ const getComponentRect = (component: ComponentLike, margin: number) => {
   const cfg = COMPONENTS_CONFIG[component.type];
   if (!cfg) return null;
 
+  const rot = component.rotation || 0;
+  const isSwapped = rot === 90 || rot === 270;
+  const w = isSwapped ? cfg.height : cfg.width;
+  const h = isSwapped ? cfg.width : cfg.height;
+
   return {
     left: component.x - margin,
-    right: component.x + cfg.width + margin,
+    right: component.x + w + margin,
     top: component.y - margin,
-    bottom: component.y + cfg.height + margin,
+    bottom: component.y + h + margin,
   };
 };
 

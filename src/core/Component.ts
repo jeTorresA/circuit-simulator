@@ -32,4 +32,5 @@ export const createComponent = (
   x,
   y,
   value: DEFAULT_VALUES[type],
+  rotation: 0,
 });

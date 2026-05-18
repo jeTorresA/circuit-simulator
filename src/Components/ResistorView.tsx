@@ -12,10 +12,12 @@ interface ResistorProps {
     onSelect?: (id: string) => void;
     onDblClick?: (id: string) => void;
     isSelected?: boolean;
+    rotation?: number;
 }
 
-const Resistor = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDblClick, isSelected }: ResistorProps) => {
+const Resistor = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDblClick, isSelected, rotation }: ResistorProps) => {
     const config = COMPONENTS_CONFIG['resistor'];
+    const rot = rotation || 0;
 
     return (
         <Group
@@ -34,19 +36,28 @@ const Resistor = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDbl
                 onDblClick?.(id);
             }}
         >
-            <Rect
-                width={config.width}
-                height={config.height}
-                fill={config.fill}
-                stroke={isSelected ? '#f1c40f' : config.stroke}
-                strokeWidth={isSelected ? 3 : 1}
-                shadowColor={isSelected ? '#f1c40f' : undefined}
-                shadowBlur={isSelected ? 10 : 0}
+            <Group x={config.width / 2} y={config.height / 2} rotation={rot}>
+                <Group x={-config.width / 2} y={-config.height / 2}>
+                    <Rect
+                        width={config.width}
+                        height={config.height}
+                        fill={config.fill}
+                        stroke={isSelected ? '#f1c40f' : config.stroke}
+                        strokeWidth={isSelected ? 3 : 1}
+                        shadowColor={isSelected ? '#f1c40f' : undefined}
+                        shadowBlur={isSelected ? 10 : 0}
+                    />
+                    <Pin id={id + ":left"} x={config.pins.left.x} y={config.pins.left.y} onPinClick={onPinClick} />
+                    <Pin id={id + ":right"} x={config.pins.right.x} y={config.pins.right.y} onPinClick={onPinClick} />
+                </Group>
+            </Group>
+            <Text
+                text={config.label}
+                x={config.labelPos.x}
+                y={config.labelPos.y}
+                fontSize={config.labelSize}
+                fill={config.labelFill}
             />
-            <Text text={config.label} x={config.labelPos.x} y={config.labelPos.y} fontSize={config.labelSize} fill={config.labelFill} />
-        
-            <Pin id={id + ":left"} x={config.pins.left.x} y={config.pins.left.y} onPinClick={onPinClick} />
-            <Pin id={id + ":right"} x={config.pins.right.x} y={config.pins.right.y} onPinClick={onPinClick} />
         </Group>
     )
 };

@@ -118,7 +118,7 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
   const gridSize = 10;
   const stageWidth = window.innerWidth - 200;
   const stageHeight = window.innerHeight - bottomOffset;
-  const { components, wires, junctions, updateComponentPos, updateComponentValue, addWire, removeWire, removeComponent, addJunction } = useCircuitStore();
+  const { components, wires, junctions, updateComponentPos, updateComponentValue, addWire, removeWire, removeComponent, addJunction, rotateComponent } = useCircuitStore();
   const [dragLine, setDragLine] = useState<{ fromNode: string; mousePos: WirePoint; bendPoints: WirePoint[] } | null>(null);
   const [alertMessage, setAlertMessage] = useState('');
   const [showAlert, setShowAlert] = useState(false);
@@ -126,20 +126,26 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
   const [draggingComponentId, setDraggingComponentId] = useState<string | null>(null);
   const [editingComponentId, setEditingComponentId] = useState<string | null>(null);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
-  const [ctrlHeld, setCtrlHeld] = useState(false);
   const alertTimeoutRef = useRef<number | null>(null);
   const stableRoutedWirePointsRef = useRef<Map<string, number[]>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
   const isPanningRef = useRef(false);
   const panStartRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
+  const spaceHeldRef = useRef(false);
+  const [spaceHeld, setSpaceHeld] = useState(false);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Control') setCtrlHeld(true);
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        spaceHeldRef.current = true;
+        setSpaceHeld(true);
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Control') {
-        setCtrlHeld(false);
+      if (e.key === ' ' || e.code === 'Space') {
+        spaceHeldRef.current = false;
+        setSpaceHeld(false);
         if (!isPanningRef.current && containerRef.current) {
           containerRef.current.style.cursor = 'default';
         }
@@ -245,26 +251,36 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       if (!selected) return;
-      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
 
-      event.preventDefault();
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
 
-      if (selected.type === 'wire') {
-        removeWire(selected.id);
-        triggerAlert('Cable eliminado.');
-      } else {
-        removeComponent(selected.id);
-        triggerAlert('Componente eliminado.');
+        if (selected.type === 'wire') {
+          removeWire(selected.id);
+          triggerAlert('Cable eliminado.');
+        } else {
+          removeComponent(selected.id);
+          triggerAlert('Componente eliminado.');
+        }
+
+        setSelected(null);
+        setDragLine(null);
+        return;
       }
 
-      setSelected(null);
-      setDragLine(null);
+      if (selected.type === 'component' && (event.key === 'r' || event.key === 'R')) {
+        event.preventDefault();
+        rotateComponent(selected.id);
+        triggerAlert('Componente rotado 90°.');
+        return;
+      }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selected, removeWire, removeComponent]);
+  }, [selected, removeWire, removeComponent, rotateComponent]);
 
   const screenToWorld = (sx: number, sy: number): WirePoint => ({
     x: sx - panOffset.x,
@@ -330,7 +346,7 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
   };
 
   const handleMouseDown = (e: any) => {
-    if (e.evt.ctrlKey && e.target === e.target.getStage()) {
+    if (spaceHeldRef.current && e.target === e.target.getStage()) {
       isPanningRef.current = true;
       panStartRef.current = {
         startX: e.evt.clientX,
@@ -374,7 +390,7 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
       isPanningRef.current = false;
       panStartRef.current = null;
       if (containerRef.current) {
-        containerRef.current.style.cursor = ctrlHeld ? 'grab' : 'default';
+        containerRef.current.style.cursor = spaceHeldRef.current ? 'grab' : 'default';
       }
     }
   };
@@ -415,7 +431,7 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
         flexGrow: 1,
         backgroundColor: '#ecf0f1',
         position: 'relative',
-        cursor: ctrlHeld && !isPanningRef.current ? 'grab' : undefined,
+        cursor: spaceHeld && !isPanningRef.current ? 'grab' : undefined,
       }}
     >
       <FloatingAlert message={alertMessage} visible={showAlert} />
@@ -562,6 +578,7 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
                   onSelect={(id: string) => setSelected({ type: 'component', id })}
                   onDblClick={(id: string) => setEditingComponentId(id)}
                   isSelected={selected?.type === 'component' && selected.id === comp.id}
+                  rotation={comp.rotation}
                 />
               );
             })}

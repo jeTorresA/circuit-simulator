@@ -141,6 +141,15 @@ export const useCircuitStore = () => {
     }));
   };
 
+  const rotateComponent = (id: string) => {
+    setStore((prev) => ({
+      ...prev,
+      components: prev.components.map((c) =>
+        c.id === id ? { ...c, rotation: (c.rotation + 90) % 360 } : c
+      ),
+    }));
+  };
+
   const addJunction = (x: number, y: number): string => {
     const id = `jct:${uuidv4().slice(0, 8)}`;
     setStore((prev) => ({
@@ -173,6 +182,7 @@ export const useCircuitStore = () => {
     addComponent,
     updateComponentPos,
     updateComponentValue,
+    rotateComponent,
     addWire,
     removeWire,
     removeComponent,

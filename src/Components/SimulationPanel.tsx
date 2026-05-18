@@ -5,6 +5,7 @@ interface SimulationPanelProps {
   simError: string | null;
   visible: boolean;
   onToggle: () => void;
+  onSimulate: () => void;
 }
 
 function formatCurrent(A: number): string {
@@ -30,11 +31,26 @@ function formatVoltage(V: number): string {
   return `${(V * 1e9).toFixed(1)} nV`;
 }
 
-const SimulationPanel = ({ simResult, simError, visible, onToggle }: SimulationPanelProps) => {
+const simulateBtnStyle: React.CSSProperties = {
+  padding: '5px 14px',
+  cursor: 'pointer',
+  backgroundColor: '#27ae60',
+  border: 'none',
+  color: 'white',
+  fontWeight: 'bold',
+  borderRadius: '4px',
+  fontSize: '12px',
+  whiteSpace: 'nowrap',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  flexShrink: 0,
+};
+
+const SimulationPanel = ({ simResult, simError, visible, onToggle, onSimulate }: SimulationPanelProps) => {
   if (!visible) {
     return (
       <div
-        onClick={onToggle}
         style={{
           height: 28,
           backgroundColor: '#2c3e50',
@@ -42,14 +58,19 @@ const SimulationPanel = ({ simResult, simError, visible, onToggle }: SimulationP
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
-          padding: '0 14px',
+          padding: '0 10px',
           userSelect: 'none',
           flexShrink: 0,
+          gap: '6px',
         }}
       >
-        <span style={{ fontSize: 11, color: '#95a5a6', marginRight: 6 }}>▲</span>
-        <span style={{ fontSize: 12, color: '#bdc3c7' }}>Resultados DC</span>
-        <div style={{ flex: 1 }} />
+        <span onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, height: '100%' }}>
+          <span style={{ fontSize: 11, color: '#95a5a6' }}>▲</span>
+          <span style={{ fontSize: 12, color: '#bdc3c7' }}>Resultados DC</span>
+        </span>
+        <button onClick={(e) => { e.stopPropagation(); onSimulate(); }} style={simulateBtnStyle}>
+          ▶ Simular DC
+        </button>
         <span style={{ fontSize: 10, color: '#5a6a7a' }}>Ctrl+J</span>
       </div>
     );
@@ -73,13 +94,17 @@ const SimulationPanel = ({ simResult, simError, visible, onToggle }: SimulationP
           padding: '5px 14px',
           borderBottom: '1px solid #445566',
           flexShrink: 0,
+          gap: 8,
         }}
       >
         <span style={{ fontWeight: 'bold', fontSize: 13, color: '#ecf0f1' }}>Resultados DC</span>
         <div style={{ flex: 1 }} />
+        <button onClick={onSimulate} style={simulateBtnStyle}>
+          ▶ Simular DC
+        </button>
         <span
           onClick={onToggle}
-          style={{ cursor: 'pointer', fontSize: 11, color: '#95a5a6', marginRight: 8 }}
+          style={{ cursor: 'pointer', fontSize: 11, color: '#95a5a6' }}
         >
           ▼ Ocultar
         </span>
@@ -105,7 +130,7 @@ const SimulationPanel = ({ simResult, simError, visible, onToggle }: SimulationP
 
         {!simResult && !simError && (
           <div style={{ fontSize: 12, color: '#7f8c8d', padding: '8px' }}>
-            Presiona <strong>Simular DC</strong> en el panel lateral.
+            Presiona <strong>Simular DC</strong> para comenzar.
           </div>
         )}
 

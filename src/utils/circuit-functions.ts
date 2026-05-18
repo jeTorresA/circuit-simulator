@@ -10,10 +10,21 @@ export const getPinGlobalPosition = (pinId: string, components: any[]) => {
     const config = COMPONENTS_CONFIG[comp.type];
     const offset = config?.pins?.[pinName] || { x: 0, y: 0 };
 
-    return {
-        x: comp.x + offset.x,
-        y: comp.y + offset.y
-    };
+    if (!comp.rotation || comp.rotation === 0) {
+        return { x: comp.x + offset.x, y: comp.y + offset.y };
+    }
+
+    const cx = config.width / 2;
+    const cy = config.height / 2;
+    const dx = offset.x - cx;
+    const dy = offset.y - cy;
+    const rad = (comp.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const rx = dx * cos - dy * sin + cx;
+    const ry = dx * sin + dy * cos + cy;
+
+    return { x: comp.x + rx, y: comp.y + ry };
 }
 
 export const getNodePosition = (nodeId: string, components: any[], junctions: JunctionPoint[]) => {

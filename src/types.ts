@@ -11,6 +11,7 @@ export interface Component {
     x: number;
     y: number;
     value: number;
+    rotation: number;
 }
 
 export interface Pin {

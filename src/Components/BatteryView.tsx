@@ -2,7 +2,7 @@ import { Group, Text, Circle } from "react-konva";
 import Pin from "./PinView";
 import { COMPONENTS_CONFIG } from "../config/components";
 
-interface ResistorProps {
+interface BatteryProps {
     id: string;
     x: number;
     y: number;
@@ -12,10 +12,12 @@ interface ResistorProps {
     onSelect?: (id: string) => void;
     onDblClick?: (id: string) => void;
     isSelected?: boolean;
-} 
+    rotation?: number;
+}
 
-const Battery = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDblClick, isSelected }: ResistorProps) => {
+const Battery = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDblClick, isSelected, rotation }: BatteryProps) => {
     const config = COMPONENTS_CONFIG['battery'];
+    const rot = rotation || 0;
 
     return (
         <Group
@@ -34,20 +36,29 @@ const Battery = ({ id, x, y, onPinClick, onDragMove, onDragEnd, onSelect, onDblC
                 onDblClick?.(id);
             }}
         >
-            <Circle
-                radius={config.radius}
-                x={config.radius}
-                y={config.radius}
-                fill={config.fill}
-                stroke={isSelected ? '#f1c40f' : config.stroke}
-                strokeWidth={isSelected ? 3 : 1}
-                shadowColor={isSelected ? '#f1c40f' : undefined}
-                shadowBlur={isSelected ? 10 : 0}
+            <Group x={config.width / 2} y={config.height / 2} rotation={rot}>
+                <Group x={-config.width / 2} y={-config.height / 2}>
+                    <Circle
+                        radius={config.radius}
+                        x={config.radius}
+                        y={config.radius}
+                        fill={config.fill}
+                        stroke={isSelected ? '#f1c40f' : config.stroke}
+                        strokeWidth={isSelected ? 3 : 1}
+                        shadowColor={isSelected ? '#f1c40f' : undefined}
+                        shadowBlur={isSelected ? 10 : 0}
+                    />
+                    <Pin id={id + ":pos"} x={config.pins.pos.x} y={config.pins.pos.y} onPinClick={onPinClick} />
+                    <Pin id={id + ":neg"} x={config.pins.neg.x} y={config.pins.neg.y} onPinClick={onPinClick} />
+                </Group>
+            </Group>
+            <Text
+                text={config.label}
+                x={config.labelPos.x}
+                y={config.labelPos.y}
+                fontSize={config.labelSize}
+                fill={config.labelFill}
             />
-            <Text text={config.label} x={config.labelPos.x} y={config.labelPos.y} fontSize={config.labelSize} fill={config.labelFill} />
-        
-            <Pin id={id + ":pos"} x={config.pins.pos.x} y={config.pins.pos.y} onPinClick={onPinClick} />
-            <Pin id={id + ":neg"} x={config.pins.neg.x} y={config.pins.neg.y} onPinClick={onPinClick} />
         </Group>
     )
 };

@@ -1,125 +1,149 @@
+import { useState } from "react";
 import { useCircuitStore } from "../hooks/useCircuitStore";
-import { solveDC } from "../core/Solver";
-import type { SimulationResult } from "../core/Solver";
 
 interface ToolbarProps {
-  onSimulationResult?: (result: SimulationResult | null, error?: string) => void;
+  width: number;
+  onToggle: () => void;
 }
 
-const Toolbar = ({ onSimulationResult }: ToolbarProps) => {
-    const { components, wires, junctions, addComponent } = useCircuitStore();
+const COMPONENT_DEFS = [
+  {
+    type: "resistor" as const,
+    label: "Resistencia",
+    color: "#f39c12",
+    icon: (
+      <svg viewBox="0 0 24 24" width="22" height="22">
+        <polyline points="1,12 4,6 8,18 12,6 16,18 20,6 23,12" stroke="#fff" strokeWidth="2" fill="none" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
+    type: "capacitor" as const,
+    label: "Capacitor",
+    color: "#3498db",
+    icon: (
+      <svg viewBox="0 0 24 24" width="22" height="22">
+        <line x1="1" y1="12" x2="8" y2="12" stroke="#fff" strokeWidth="2" />
+        <line x1="8" y1="4" x2="8" y2="20" stroke="#fff" strokeWidth="2.5" />
+        <line x1="16" y1="4" x2="16" y2="20" stroke="#fff" strokeWidth="2.5" />
+        <line x1="16" y1="12" x2="23" y2="12" stroke="#fff" strokeWidth="2" />
+      </svg>
+    ),
+  },
+  {
+    type: "inductor" as const,
+    label: "Inductor",
+    color: "#9b59b6",
+    icon: (
+      <svg viewBox="0 0 24 24" width="22" height="22">
+        <path d="M2 12 Q4 2 7 12 Q10 2 13 12 Q16 2 19 12 L22 12" stroke="#fff" strokeWidth="2" fill="none" />
+      </svg>
+    ),
+  },
+  {
+    type: "battery" as const,
+    label: "Batería",
+    color: "#e67e22",
+    icon: (
+      <svg viewBox="0 0 24 24" width="22" height="22">
+        <line x1="1" y1="12" x2="6" y2="12" stroke="#fff" strokeWidth="2" />
+        <line x1="8" y1="5" x2="8" y2="19" stroke="#fff" strokeWidth="2.5" />
+        <line x1="8" y1="9" x2="14" y2="9" stroke="#fff" strokeWidth="2" />
+        <line x1="16" y1="5" x2="16" y2="19" stroke="#fff" strokeWidth="2.5" />
+        <line x1="16" y1="12" x2="23" y2="12" stroke="#fff" strokeWidth="2" />
+      </svg>
+    ),
+  },
+];
 
-    const handleSimulate = () => {
-      try {
-        const result = solveDC(components, wires, junctions);
-        onSimulationResult?.(result, result.components.length === 0 ? 'No hay componentes para simular.' : undefined);
-      } catch {
-        onSimulationResult?.(null, 'Error al resolver el circuito.');
-      }
-    };
+const Toolbar = ({ width, onToggle }: ToolbarProps) => {
+  const { components, wires, addComponent } = useCircuitStore();
+  const [filter, setFilter] = useState("");
 
-    return (
-        <div style={{ 
-            width: '220px', 
-            backgroundColor: '#2c3e50', 
-            padding: '20px', 
-            color: 'white',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px',
-            zIndex: 10,
-            overflowY: 'auto',
-          }}>
-            <h3 style={{ margin: '0 0 10px 0', fontSize: '16px' }}>Componentes</h3>
-            
-            <button 
-              onClick={() => addComponent('resistor')}
-              style={{
-                padding: '8px',
-                cursor: 'pointer',
-                backgroundColor: '#f39c12',
-                border: 'none',
-                color: 'white',
-                fontWeight: 'bold',
-                borderRadius: '4px',
-                fontSize: '13px',
-              }}
-            >
-              + Resistencia
-            </button>
+  const filtered = COMPONENT_DEFS.filter((c) =>
+    c.label.toLowerCase().includes(filter.toLowerCase())
+  );
 
-            <button 
-              onClick={() => addComponent('capacitor')}
-              style={{
-                padding: '8px',
-                cursor: 'pointer',
-                backgroundColor: '#3498db',
-                border: 'none',
-                color: 'white',
-                fontWeight: 'bold',
-                borderRadius: '4px',
-                fontSize: '13px',
-              }}
-            >
-              + Capacitor
-            </button>
+  return (
+    <div
+      style={{
+        width,
+        backgroundColor: "#2c3e50",
+        padding: "20px 20px 20px 16px",
+        color: "white",
+        display: "flex",
+        flexDirection: "column",
+        gap: "2px",
+        zIndex: 10,
+        overflowY: "auto",
+        flexShrink: 0,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", marginBottom: "6px" }}>
+        <h3 style={{ margin: 0, fontSize: "16px", flex: 1 }}>Componentes</h3>
+        <span
+          onClick={onToggle}
+          style={{
+            cursor: "pointer",
+            fontSize: "14px",
+            color: "#95a5a6",
+            padding: "4px",
+            lineHeight: 1,
+          }}
+          title="Ocultar panel"
+        >
+          ◀
+        </span>
+      </div>
 
-            <button 
-              onClick={() => addComponent('inductor')}
-              style={{
-                padding: '8px',
-                cursor: 'pointer',
-                backgroundColor: '#9b59b6',
-                border: 'none',
-                color: 'white',
-                fontWeight: 'bold',
-                borderRadius: '4px',
-                fontSize: '13px',
-              }}
-            >
-              + Inductor
-            </button>
+      <input
+        type="text"
+        placeholder="Filtrar..."
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        style={{
+          padding: "6px 8px",
+          borderRadius: "4px",
+          border: "1px solid #445566",
+          backgroundColor: "#1a252f",
+          color: "#ecf0f1",
+          fontSize: "12px",
+          outline: "none",
+          marginBottom: "8px",
+        }}
+      />
 
-            <button 
-              onClick={() => addComponent('battery')}
-              style={{
-                padding: '8px',
-                cursor: 'pointer',
-                backgroundColor: '#e67e22',
-                border: 'none',
-                color: 'white',
-                fontWeight: 'bold',
-                borderRadius: '4px',
-                fontSize: '13px',
-              }}
-            >
-              + Batería
-            </button>
+      {filtered.map((c) => (
+        <button
+          key={c.type}
+          onClick={() => addComponent(c.type)}
+          style={{
+            padding: "7px 10px",
+            cursor: "pointer",
+            backgroundColor: c.color,
+            border: "none",
+            color: "white",
+            fontWeight: "bold",
+            borderRadius: "4px",
+            fontSize: "13px",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            textAlign: "left",
+          }}
+        >
+          {c.icon}
+          <span>{c.label}</span>
+        </button>
+      ))}
 
-            <hr style={{ border: 'none', borderTop: '1px solid #445566', margin: '10px 0' }} />
-
-            <button
-              onClick={handleSimulate}
-              style={{
-                padding: '10px',
-                cursor: 'pointer',
-                backgroundColor: '#27ae60',
-                border: 'none',
-                color: 'white',
-                fontWeight: 'bold',
-                borderRadius: '4px',
-                fontSize: '14px',
-              }}
-            >
-              ▶ Simular DC
-            </button>
-
-            <div style={{ marginTop: 'auto', fontSize: '11px', color: '#bdc3c7' }}>
-              Componentes: {components.length}<br/>
-              Cables: {wires.length}
-            </div>
-          </div>
-    );
+      <div style={{ marginTop: "auto", fontSize: "11px", color: "#bdc3c7" }}>
+        Componentes: {components.length}
+        <br />
+        Cables: {wires.length}
+      </div>
+    </div>
+  );
 };
 
 export default Toolbar;
