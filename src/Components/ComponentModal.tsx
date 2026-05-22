@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { COMPONENT_DEFINITIONS } from '../config/componentDefinitions';
 
 interface ComponentModalProps {
   componentId: string;
@@ -7,20 +8,6 @@ interface ComponentModalProps {
   onSave: (id: string, value: number) => void;
   onClose: () => void;
 }
-
-const TYPE_LABELS: Record<string, string> = {
-  resistor: 'Resistencia',
-  capacitor: 'Capacitor',
-  inductor: 'Inductor',
-  battery: 'Batería',
-};
-
-const TYPE_UNITS: Record<string, string> = {
-  resistor: 'Ω',
-  capacitor: 'F',
-  inductor: 'H',
-  battery: 'V',
-};
 
 const ComponentModal = ({ componentId, componentType, currentValue, onSave, onClose }: ComponentModalProps) => {
   const [value, setValue] = useState(String(currentValue));
@@ -45,6 +32,8 @@ const ComponentModal = ({ componentId, componentType, currentValue, onSave, onCl
       onSave(componentId, parsed);
     }
   };
+
+  const definition = COMPONENT_DEFINITIONS[componentType as keyof typeof COMPONENT_DEFINITIONS];
 
   return (
     <div
@@ -74,7 +63,7 @@ const ComponentModal = ({ componentId, componentType, currentValue, onSave, onCl
       >
         <h3 style={{ margin: '0 0 4px 0', fontSize: '16px' }}>Editar componente</h3>
         <div style={{ fontSize: '12px', color: '#bdc3c7', marginBottom: '16px' }}>
-          {TYPE_LABELS[componentType] || componentType} &middot; {componentId}
+          {(definition?.displayName || componentType)} &middot; {componentId}
         </div>
 
         <label style={{ fontSize: '13px', display: 'block', marginBottom: '6px' }}>
@@ -103,7 +92,7 @@ const ComponentModal = ({ componentId, componentType, currentValue, onSave, onCl
             }}
           />
           <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#85c1e9', minWidth: '20px' }}>
-            {TYPE_UNITS[componentType] || ''}
+            {definition?.unit || ''}
           </span>
         </div>
 

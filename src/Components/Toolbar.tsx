@@ -60,6 +60,7 @@ const COMPONENT_DEFS = [
 const Toolbar = ({ width, onToggle, onOpenDocs }: ToolbarProps) => {
   const { components, wires, addComponent } = useCircuitStore();
   const [filter, setFilter] = useState("");
+  const [isFilterFocused, setIsFilterFocused] = useState(false);
 
   const filtered = COMPONENT_DEFS.filter((c) =>
     c.label.toLowerCase().includes(filter.toLowerCase())
@@ -80,7 +81,7 @@ const Toolbar = ({ width, onToggle, onOpenDocs }: ToolbarProps) => {
         flexShrink: 0,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", marginBottom: "6px" }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
         <h3 style={{ margin: 0, fontSize: "16px", flex: 1 }}>Componentes</h3>
         <button
           onClick={onOpenDocs}
@@ -119,15 +120,18 @@ const Toolbar = ({ width, onToggle, onOpenDocs }: ToolbarProps) => {
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         style={{
-          padding: "6px 8px",
-          borderRadius: "4px",
-          border: "1px solid #445566",
-          backgroundColor: "#1a252f",
+          padding: "6px 2px",
+          border: "none",
+          borderBottom: isFilterFocused ? "1px solid #7fb3d5" : "1px solid #4f6881",
+          backgroundColor: "transparent",
           color: "#ecf0f1",
           fontSize: "12px",
           outline: "none",
+          transition: "border-bottom-color 140ms ease",
           marginBottom: "8px",
         }}
+        onFocus={() => setIsFilterFocused(true)}
+        onBlur={() => setIsFilterFocused(false)}
       />
 
       {filtered.map((c) => (

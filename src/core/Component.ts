@@ -1,25 +1,26 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { ComponentType, Component } from '../types';
+import { COMPONENT_DEFINITIONS } from '../config/componentDefinitions';
 
 export const DEFAULT_VALUES: Record<ComponentType, number> = {
-  resistor: 1000,
-  capacitor: 0.00001,
-  inductor: 0.001,
-  battery: 9,
+  resistor: COMPONENT_DEFINITIONS.resistor.defaultValue,
+  capacitor: COMPONENT_DEFINITIONS.capacitor.defaultValue,
+  inductor: COMPONENT_DEFINITIONS.inductor.defaultValue,
+  battery: COMPONENT_DEFINITIONS.battery.defaultValue,
 };
 
 export const UNIT_MAP: Record<ComponentType, string> = {
-  resistor: 'Ω',
-  capacitor: 'F',
-  inductor: 'H',
-  battery: 'V',
+  resistor: COMPONENT_DEFINITIONS.resistor.unit,
+  capacitor: COMPONENT_DEFINITIONS.capacitor.unit,
+  inductor: COMPONENT_DEFINITIONS.inductor.unit,
+  battery: COMPONENT_DEFINITIONS.battery.unit,
 };
 
 export const LABEL_MAP: Record<ComponentType, string> = {
-  resistor: 'R',
-  capacitor: 'C',
-  inductor: 'L',
-  battery: 'BAT',
+  resistor: COMPONENT_DEFINITIONS.resistor.label,
+  capacitor: COMPONENT_DEFINITIONS.capacitor.label,
+  inductor: COMPONENT_DEFINITIONS.inductor.label,
+  battery: COMPONENT_DEFINITIONS.battery.label,
 };
 
 export const createComponent = (

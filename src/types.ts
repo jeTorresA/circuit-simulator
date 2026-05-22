@@ -1,4 +1,5 @@
 export type ComponentType = 'resistor' | 'capacitor' | 'inductor' | 'battery';
+export type ComponentViewProfile = 'symbolic_iec' | 'symbolic_ansi' | 'realistic_2d';
 
 export interface Point {
     x: number;
@@ -23,8 +24,9 @@ export interface Pin {
 
 export interface Wire {
     id: string;
-    fromPinId: string;
-    toPinId: string;
+    from: string;
+    to: string;
+    bendPoints?: Point[];
 }
 
 export interface JunctionPoint {

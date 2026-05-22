@@ -1,15 +1,21 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { createComponent } from '../core/Component';
-import type { ComponentType, Component, JunctionPoint } from '../types';
+import type { ComponentType, Component, JunctionPoint, Wire } from '../types';
 
 const STORAGE_KEY = 'mi-simulador-circuitos-v1';
 
 interface CircuitState {
   components: Component[];
-  wires: any[];
+  wires: Wire[];
   junctions: JunctionPoint[];
 }
+
+const normalizeState = (value: Partial<CircuitState> | null | undefined): CircuitState => ({
+  components: Array.isArray(value?.components) ? value.components : [],
+  wires: Array.isArray(value?.wires) ? value.wires : [],
+  junctions: Array.isArray(value?.junctions) ? value.junctions : [],
+});
 
 interface WirePoint {
   x: number;
@@ -103,7 +109,7 @@ export const useCircuitStore = () => {
     setStore((prev) => {
       const remainingWires = prev.wires.filter((wire) => wire.id !== wireId);
       const referencedJunctionIds = new Set<string>();
-      remainingWires.forEach((w: any) => {
+      remainingWires.forEach((w) => {
         if (typeof w.from === 'string' && w.from.startsWith('jct:')) referencedJunctionIds.add(w.from);
         if (typeof w.to === 'string' && w.to.startsWith('jct:')) referencedJunctionIds.add(w.to);
       });
@@ -115,7 +121,7 @@ export const useCircuitStore = () => {
   const updateWireBendPoints = (wireId: string, bendPoints: WirePoint[]) => {
     setStore((prev) => ({
       ...prev,
-      wires: prev.wires.map((wire: any) =>
+      wires: prev.wires.map((wire) =>
         wire.id === wireId ? { ...wire, bendPoints } : wire
       ),
     }));
@@ -124,12 +130,12 @@ export const useCircuitStore = () => {
   const removeComponent = (componentId: string) => {
     setStore((prev) => {
       const remainingWires = prev.wires.filter(
-        (wire: any) =>
+        (wire) =>
           !wire.from.startsWith(`${componentId}:`) &&
           !wire.to.startsWith(`${componentId}:`)
       );
       const referencedJunctionIds = new Set<string>();
-      remainingWires.forEach((w: any) => {
+      remainingWires.forEach((w) => {
         if (typeof w.from === 'string' && w.from.startsWith('jct:')) referencedJunctionIds.add(w.from);
         if (typeof w.to === 'string' && w.to.startsWith('jct:')) referencedJunctionIds.add(w.to);
       });
@@ -173,7 +179,7 @@ export const useCircuitStore = () => {
       ...prev,
       junctions: prev.junctions.filter((j) => j.id !== id),
       wires: prev.wires.filter(
-        (w: any) => w.from !== id && w.to !== id
+        (w) => w.from !== id && w.to !== id
       ),
     }));
   };
@@ -191,6 +197,19 @@ export const useCircuitStore = () => {
     emit();
   };
 
+  const replaceCircuit = (next: Partial<CircuitState>) => {
+    const normalized = normalizeState(next);
+    store = normalized;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    emit();
+  };
+
+  const getCircuitSnapshot = (): CircuitState => ({
+    components: [...state.components],
+    wires: [...state.wires],
+    junctions: [...state.junctions],
+  });
+
   return {
     components: state.components,
     wires: state.wires,
@@ -207,5 +226,7 @@ export const useCircuitStore = () => {
     updateJunctionPos,
     removeJunction,
     clearCircuit,
+    replaceCircuit,
+    getCircuitSnapshot,
   };
 };

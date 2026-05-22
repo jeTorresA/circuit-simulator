@@ -1,5 +1,5 @@
 import { COMPONENTS_CONFIG } from '../config/components';
-import type { Component, JunctionPoint } from '../types';
+import type { Component, JunctionPoint, Wire } from '../types';
 
 const GMIN = 1e-12;
 
@@ -33,7 +33,7 @@ interface SimComponent {
 
 function buildNetlist(
   components: Component[],
-  wires: any[],
+  wires: Wire[],
   junctions: JunctionPoint[]
 ): SimComponent[] {
   const vertices = new Set<string>();
@@ -189,7 +189,7 @@ function stampVoltageSource(
 
 export function solveDC(
   components: Component[],
-  wires: any[],
+  wires: Wire[],
   junctions: JunctionPoint[]
 ): SimulationResult {
   const simComps = buildNetlist(components, wires, junctions);

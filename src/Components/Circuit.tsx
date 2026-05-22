@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Stage, Layer, Line, Circle, Group } from 'react-konva';
 import { useCircuitStore } from '../hooks/useCircuitStore';
-import { ComponentMap } from './ViewRegistry';
+import { getComponentView } from './ViewRegistry';
 import { getPinGlobalPosition, getNodePosition, handleDragMove, handleDragEnd } from '../utils/circuit-functions';
 import FloatingAlert from './FloatingAlert';
 import ComponentModal from './ComponentModal';
 import { doesWireIntersectComponents, findOrthogonalRoute } from '../utils/wire-routing';
 import { COMPONENTS_CONFIG } from '../config/components';
-import type { JunctionPoint } from '../types';
+import type { ComponentViewProfile, JunctionPoint } from '../types';
 
 type Selection =
   | { type: 'component'; id: string }
@@ -122,11 +122,13 @@ const findJunctionNear = (x: number, y: number, junctions: JunctionPoint[], tole
 
 interface CircuitProps {
   bottomOffset?: number;
+  activeViewProfile: ComponentViewProfile;
+  sideOffset?: number;
 }
 
-const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
+const Circuit = ({ bottomOffset = 0, activeViewProfile, sideOffset = 0 }: CircuitProps) => {
   const gridSize = 10;
-  const stageWidth = window.innerWidth - 200;
+  const stageWidth = Math.max(300, window.innerWidth - sideOffset);
   const stageHeight = window.innerHeight - bottomOffset;
   const { components, wires, junctions, updateComponentPos, updateComponentValue, addWire, removeWire, updateWireBendPoints, removeComponent, addJunction, updateJunctionPos, rotateComponent } = useCircuitStore();
   const [dragLine, setDragLine] = useState<{ fromNode: string; mousePos: WirePoint; bendPoints: WirePoint[] } | null>(null);
@@ -148,6 +150,14 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
         spaceHeldRef.current = true;
@@ -803,7 +813,7 @@ const Circuit = ({ bottomOffset = 0 }: CircuitProps) => {
             ))}
 
             {components.map((comp) => {
-              const ComponentView = ComponentMap[comp.type];
+              const ComponentView = getComponentView(comp.type, activeViewProfile);
               if (!ComponentView) return null;
 
               return (
